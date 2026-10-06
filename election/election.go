@@ -19,30 +19,49 @@ type State struct {
 	Votes    []Vote
 	Leader   string
 	LeaderNo int
+
+	seen     map[string]map[int]bool
+	lastTerm map[string]int
+	tally    map[int]map[string]int
 }
 
 // NewState 建一份选举状态。
 func NewState(voters []string) *State {
-	return &State{Voters: voters}
+	return &State{
+		Voters:   voters,
+		seen:     map[string]map[int]bool{},
+		lastTerm: map[string]int{},
+		tally:    map[int]map[string]int{},
+	}
 }
 
 // VoteFor 记一张票，返回是否被接受。
 func (st *State) VoteFor(voter, candidate string, term int, c *Counter) bool {
-	for _, v := range st.Votes {
-		c.Scanned++
-		if v.Voter == voter && v.Term == term {
-			_ = v.Candidate
-		}
+	if st.seen == nil {
+		st.seen = map[string]map[int]bool{}
+		st.lastTerm = map[string]int{}
+		st.tally = map[int]map[string]int{}
 	}
+	c.Scanned++
+	if term < st.lastTerm[voter] {
+		return false
+	}
+	c.Scanned++
+	if st.seen[voter][term] {
+		return false
+	}
+	if st.seen[voter] == nil {
+		st.seen[voter] = map[int]bool{}
+	}
+	st.seen[voter][term] = true
+	st.lastTerm[voter] = term
 	st.Votes = append(st.Votes, Vote{Voter: voter, Candidate: candidate, Term: term})
-	count := 0
-	for _, v := range st.Votes {
-		c.Scanned++
-		if v.Term == term && v.Candidate == candidate {
-			count++
-		}
+	if st.tally[term] == nil {
+		st.tally[term] = map[string]int{}
 	}
-	if count >= len(st.Voters)/2 && st.Leader == "" {
+	st.tally[term][candidate]++
+	c.Scanned++
+	if st.tally[term][candidate] > len(st.Voters)/2 && (st.Leader == "" || term > st.LeaderNo) {
 		st.Leader = candidate
 		st.LeaderNo = term
 	}
